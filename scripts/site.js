@@ -17,14 +17,14 @@ $(document).ready(function () {
 		// console.log(data);
 		
 		var new_element = $('<div class="log"></div>').append($('<div class="type"></div>').html(data.pair)).append($('<span class="time"></span>').html(new Date().toLocaleTimeString("en-us", localeOptions))).append($('<div class="content"></div>').html(JSON.stringify(data.trade, null, ' ')));
-		$("#trade-log-container").append(new_element);
+		$("#trade-log-container").prepend(new_element);
 	})
 
 	socket.on("ticker", (data) => {
 		// console.log(data);
 		
 		var new_element = $('<div class="log"></div>').append($('<div class="type"></div>').html(data.pair)).append($('<span class="time"></span>').html(new Date().toLocaleTimeString("en-us", localeOptions))).append($('<div class="content"></div>').html(JSON.stringify(data.ticker, null, ' ')));
-		$("#ticker-log-container").append(new_element);
+		$("#ticker-log-container").prepend(new_element);
 	})
 
 	$(".btn-clear").on('click', function() {

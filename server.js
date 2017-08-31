@@ -85,9 +85,8 @@ bws.on('orderbook', (pair, book) => {
 })
 
 bws.on('trade', (pair, trade) => {
-  console.log('Trade:', trade)
+  // console.log('Trade:', trade)
   if(g_socket) {
-    console.log('trade emit');
     g_socket.emit("trade", { pair, trade });
   }
 })

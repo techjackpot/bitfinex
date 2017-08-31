@@ -51,6 +51,10 @@ io.sockets.on("connection", (socket) => {
 
 
 // ------------- Bitfinex ------------
+
+// order preparation 
+var BOOK = { bids: {}, asks: {}, psnap: {}, mcnt: 0 };
+
 const BFX = require('bitfinex-api-node')
 
 const API_KEY = null;
@@ -72,30 +76,94 @@ bws.on('auth', () => {
 })
 
 bws.on('open', () => {
-  bws.subscribeTicker('BTCUSD')
-  // bws.subscribeOrderBook('BTCUSD')
-  bws.subscribeTrades('BTCUSD')
+  
+  var pairs = ["BTCUSD","ETHUSD","ETHBTC","XMRUSD","XMRBTC","LTCUSD","LTCBTC","BCHUSD","BCHBTC","BCHETH","OMGUSD","OMGBTC","OMGETH","XRPUSD","XRPBTC","ZECUSD","ZECBTC","ETCUSD","ETCBTC","EOSUSD","EOSBTC","EOSETH","RRTUSD","RRTBTC","SANUSD","SANBTC","SANETH","BCUUSD","BCUBTC","BCCUSD","BCCBTC"];
+  // "IOTAUSD","IOTABTC","IOTAETH","DASHUSD","DASHBTC"
+  pairs.forEach((pair) => {
+    bws.subscribeOrderBook(pair)
+    bws.subscribeTicker(pair)
+    bws.subscribeTrades(pair)
+  })
 
   // authenticate
   // bws.auth()
 })
 
-bws.on('orderbook', (pair, book) => {
-  // console.log('Order book:', book)
+function checkSide(side) {
+  let sbook = BOOK[side]
+  let bprices = Object.keys(sbook)
+
+  let prices = bprices.sort(function(a, b) {
+    if (side === 'bids') {
+      return +a >= +b ? -1 : 1
+    } else {
+      return +a <= +b ? -1 : 1
+    }
+  })
+
+  BOOK.psnap[side] = prices
+  //console.log("num price points", side, prices.length)
+}
+
+bws.on('orderbook', (pair, order) => {
+  // console.log('Order book:', pair, order);
+
+  var data = Object.assign({}, order );
+
+  if(BOOK.mcnt == 0) {
+    const side = data.AMOUNT >= 0 ? 'bids' : 'asks'
+    data.AMOUNT = Math.abs(data.AMOUNT)
+    BOOK[side][data.PRICE] = data
+  } else {
+    if (!data.COUNT) {
+      let found = true
+      if (data.AMOUNT > 0) {
+        if (BOOK['bids'][data.PRICE]) {
+          delete BOOK['bids'][data.PRICE]
+        } else {
+          found = false
+        }
+      } else if (data.AMOUNT < 0) {
+        if (BOOK['asks'][data.PRICE]) {
+          delete BOOK['asks'][data.PRICE]
+        } else {
+          found = false
+        }
+      }
+      if (!found) {
+        // fs.appendFileSync(logfile, "[" + moment().format() + "] " + pair + " | " + JSON.stringify(pp) + " BOOK delete fail side not found\n")
+      }
+    } else {
+      let side = data.AMOUNT >= 0 ? 'bids' : 'asks'
+      data.AMOUNT = Math.abs(data.AMOUNT)
+      BOOK[side][data.PRICE] = data
+    }
+  }
+
+  checkSide('bids');
+  checkSide('asks');
+
+  BOOK.mcnt++
+  // checkCross(msg)
+  if(BOOK.mcnt%1000 == 0) {
+    // g_socket.emit("orderbook", { pair, book: Object.assign({ bids: BOOK.bids, asks: BOOK.asks }, order) } )
+    g_socket.emit("orderbook", { pair, book: { bids: BOOK.bids, asks: BOOK.asks } } )
+  }
 })
 
 bws.on('trade', (pair, trade) => {
-  // console.log('Trade:', trade)
+  // console.log('Trade:', pair, trade)
   if(g_socket) {
     g_socket.emit("trade", { pair, trade });
   }
 })
 
 bws.on('ticker', (pair, ticker) => {
-  // console.log('Ticker:', ticker)
+  // console.log('Ticker:', pair, ticker)
   if(g_socket) {
   	g_socket.emit("ticker", { pair, ticker });
   }
 })
 
 bws.on('error', console.error)
+

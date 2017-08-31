@@ -1,0 +1,4 @@
+# node_modules ignored by default
+public/
+node_scripts/
+scripts/

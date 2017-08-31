@@ -1,4 +1,4 @@
-# express-webpack-bootstrap Starter Kit
+# Bitfinex Live Channel Log
 
 Starter Kit for Express Webpack and Bootstrap Application including SCSS.
 

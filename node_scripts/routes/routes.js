@@ -6,10 +6,6 @@ var assets = require(__root + "public/assets.json"); // eslint-disable-line
 // Routes
 // =======================
 exports.routes = function (app) {
-	app.get("/admin/ping", function (req, res) {
-		res.send("pong");
-	});
-
 	app.get("/", function (req, res) {
 		res.locals = { headerType: "" };
 		res.render("pages/home", { title: "Live Status", assets: assets });

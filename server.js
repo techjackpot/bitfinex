@@ -53,8 +53,8 @@ io.sockets.on("connection", (socket) => {
 // ------------- Bitfinex ------------
 const BFX = require('bitfinex-api-node')
 
-const API_KEY = 'secret'
-const API_SECRET = 'secret'
+const API_KEY = null;
+const API_SECRET = null;
 
 const opts = {
   version: 2,
@@ -74,22 +74,26 @@ bws.on('auth', () => {
 bws.on('open', () => {
   bws.subscribeTicker('BTCUSD')
   // bws.subscribeOrderBook('BTCUSD')
-  // bws.subscribeTrades('BTCUSD')
+  bws.subscribeTrades('BTCUSD')
 
   // authenticate
   // bws.auth()
 })
 
 bws.on('orderbook', (pair, book) => {
-  console.log('Order book:', book)
+  // console.log('Order book:', book)
 })
 
 bws.on('trade', (pair, trade) => {
   console.log('Trade:', trade)
+  if(g_socket) {
+    console.log('trade emit');
+    g_socket.emit("trade", { pair, trade });
+  }
 })
 
 bws.on('ticker', (pair, ticker) => {
-  console.log('Ticker:', ticker)
+  // console.log('Ticker:', ticker)
   if(g_socket) {
   	g_socket.emit("ticker", { pair, ticker });
   }

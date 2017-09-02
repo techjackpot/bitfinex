@@ -48,12 +48,15 @@ io.sockets.on("connection", (socket) => {
 	g_socket = socket;
 });
 
+// forever connect
 
+let connected = false
+let connecting = false
 
 // ------------- Bitfinex ------------
 
 // order preparation 
-var BOOK = { bids: {}, asks: {}, psnap: {}, mcnt: 0 };
+var BOOKS = {};
 
 const BFX = require('bitfinex-api-node')
 
@@ -65,32 +68,126 @@ const opts = {
   transform: true
 }
 
-const bws = new BFX(API_KEY, API_SECRET, opts).ws
+let bws;
 
-bws.on('auth', () => {
-  // emitted after .auth()
-  // needed for private api endpoints
+const pairs = ["BTCUSD","ETHUSD","ETHBTC","XMRUSD","XMRBTC","LTCUSD","LTCBTC","BCHUSD","BCHBTC","BCHETH","OMGUSD","OMGBTC","OMGETH","XRPUSD","XRPBTC","ZECUSD","ZECBTC","ETCUSD","ETCBTC","EOSUSD","EOSBTC","EOSETH","RRTUSD","RRTBTC","SANUSD","SANBTC","SANETH","BCUUSD","BCUBTC","BCCUSD","BCCBTC"];
+// "IOTAUSD","IOTABTC","IOTAETH","DASHUSD","DASHBTC"
 
-  console.log('authenticated')
-  // bws.submitOrder ...
-})
+pairs.forEach((pair) => {
+  var newObj = {};
+  newObj.bids = {};
+  newObj.asks = {};
+  newObj.psnap = {};
+  newObj.mcnt = 0;
+  BOOKS[pair] = newObj;
+});
 
-bws.on('open', () => {
-  
-  var pairs = ["BTCUSD","ETHUSD","ETHBTC","XMRUSD","XMRBTC","LTCUSD","LTCBTC","BCHUSD","BCHBTC","BCHETH","OMGUSD","OMGBTC","OMGETH","XRPUSD","XRPBTC","ZECUSD","ZECBTC","ETCUSD","ETCBTC","EOSUSD","EOSBTC","EOSETH","RRTUSD","RRTBTC","SANUSD","SANBTC","SANETH","BCUUSD","BCUBTC","BCCUSD","BCCBTC"];
-  // "IOTAUSD","IOTABTC","IOTAETH","DASHUSD","DASHBTC"
-  pairs.forEach((pair) => {
-    bws.subscribeOrderBook(pair)
-    bws.subscribeTicker(pair)
-    bws.subscribeTrades(pair)
+connect = () => {
+
+  if (connecting || connected) return
+  connecting = true
+
+  bws = new BFX(API_KEY, API_SECRET, opts).ws
+
+  bws.on('open', () => {
+
+    connecting = false
+    connected = true
+    
+    pairs.forEach((pair) => {
+      bws.subscribeOrderBook(pair)
+      bws.subscribeTicker(pair)
+      bws.subscribeTrades(pair)
+    })
   })
 
-  // authenticate
-  // bws.auth()
-})
+  bws.on('close', () => {
+    connecting = false
+    connected = false
+  })
 
-function checkSide(side) {
-  let sbook = BOOK[side]
+
+  bws.on('orderbook', (pair, order) => {
+    // console.log('Orderbook:', pair, order)
+
+    pair = pair.substring(1); // remove tBTCUSD -> BTCUSD
+
+    var booklist = [];
+    if(order.constructor === Array) {
+      booklist = order.concat();
+    } else {
+      booklist.push(order);
+    }
+
+    if(BOOKS[pair].mcnt == 0) {
+      booklist.forEach((data) => {
+        const side = data.AMOUNT >= 0 ? 'bids' : 'asks'
+        data.AMOUNT = Math.abs(data.AMOUNT)
+        BOOKS[pair][side][data.PRICE] = data
+      })
+    } else {
+      booklist.forEach((data) => {
+        if (!data.COUNT) {
+          let found = true
+          if (data.AMOUNT > 0) {
+            if (BOOKS[pair]['bids'][data.PRICE]) {
+              delete BOOKS[pair]['bids'][data.PRICE]
+            } else {
+              found = false
+            }
+          } else if (data.AMOUNT < 0) {
+            if (BOOKS[pair]['asks'][data.PRICE]) {
+              delete BOOKS[pair]['asks'][data.PRICE]
+            } else {
+              found = false
+            }
+          }
+          if (!found) {
+          }
+        } else {
+          let side = data.AMOUNT >= 0 ? 'bids' : 'asks'
+          data.AMOUNT = Math.abs(data.AMOUNT)
+          BOOKS[pair][side][data.PRICE] = data
+        }
+      })
+    }
+
+    checkSide(pair, 'bids');
+    checkSide(pair, 'asks');
+
+    BOOKS[pair].mcnt++
+  })
+
+  bws.on('trade', (pair, trade) => {
+    // console.log('Trade:', pair, trade)
+    pair = pair.substring(1); // remove tBTCUSD -> BTCUSD
+
+    if(g_socket) {
+      g_socket.emit("trade", { pair, trade });
+    }
+  })
+
+  bws.on('ticker', (pair, ticker) => {
+    // console.log('Ticker:', pair, ticker)
+    pair = pair.substring(1); // remove tBTCUSD -> BTCUSD
+    
+    if(g_socket) {
+    	g_socket.emit("ticker", { pair, ticker });
+    }
+  })
+
+  bws.on('error', console.error)
+}
+
+setInterval(function() {
+  if (connected) return
+  connect()
+}, 5000)
+
+
+
+checkSide = (pair, side) => {
+  let sbook = BOOKS[pair][side]
   let bprices = Object.keys(sbook)
 
   let prices = bprices.sort(function(a, b) {
@@ -101,69 +198,26 @@ function checkSide(side) {
     }
   })
 
-  BOOK.psnap[side] = prices
+  BOOKS[pair].psnap[side] = prices
   //console.log("num price points", side, prices.length)
 }
 
-bws.on('orderbook', (pair, order) => {
-  // console.log('Order book:', pair, order);
+emitBookOrder = (pair) => {
+  if(BOOKS[pair] != undefined && BOOKS[pair].bids && BOOKS[pair].asks) g_socket.emit("orderbook", { pair, book: { bids: BOOKS[pair].bids, asks: BOOKS[pair].asks } } )
+}
 
-  var data = Object.assign({}, order );
+setInterval(function() {
+  pairs.forEach((pair) => {
+    emitBookOrder(pair)
+  })
+}, 1000*60)
 
-  if(BOOK.mcnt == 0) {
-    const side = data.AMOUNT >= 0 ? 'bids' : 'asks'
-    data.AMOUNT = Math.abs(data.AMOUNT)
-    BOOK[side][data.PRICE] = data
-  } else {
-    if (!data.COUNT) {
-      let found = true
-      if (data.AMOUNT > 0) {
-        if (BOOK['bids'][data.PRICE]) {
-          delete BOOK['bids'][data.PRICE]
-        } else {
-          found = false
-        }
-      } else if (data.AMOUNT < 0) {
-        if (BOOK['asks'][data.PRICE]) {
-          delete BOOK['asks'][data.PRICE]
-        } else {
-          found = false
-        }
-      }
-      if (!found) {
-        // fs.appendFileSync(logfile, "[" + moment().format() + "] " + pair + " | " + JSON.stringify(pp) + " BOOK delete fail side not found\n")
-      }
-    } else {
-      let side = data.AMOUNT >= 0 ? 'bids' : 'asks'
-      data.AMOUNT = Math.abs(data.AMOUNT)
-      BOOK[side][data.PRICE] = data
-    }
-  }
+saveBookOrder = (pair) => {
+  console.log(BOOKS[pair]);
+}
 
-  checkSide('bids');
-  checkSide('asks');
-
-  BOOK.mcnt++
-  // checkCross(msg)
-  if(BOOK.mcnt%1000 == 0) {
-    // g_socket.emit("orderbook", { pair, book: Object.assign({ bids: BOOK.bids, asks: BOOK.asks }, order) } )
-    g_socket.emit("orderbook", { pair, book: { bids: BOOK.bids, asks: BOOK.asks } } )
-  }
-})
-
-bws.on('trade', (pair, trade) => {
-  // console.log('Trade:', pair, trade)
-  if(g_socket) {
-    g_socket.emit("trade", { pair, trade });
-  }
-})
-
-bws.on('ticker', (pair, ticker) => {
-  // console.log('Ticker:', pair, ticker)
-  if(g_socket) {
-  	g_socket.emit("ticker", { pair, ticker });
-  }
-})
-
-bws.on('error', console.error)
-
+setInterval(function() {
+  pairs.forEach((pair) => {
+    saveBookOrder(pair);
+  })
+}, 1000*60*10)

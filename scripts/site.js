@@ -28,7 +28,7 @@ $(document).ready(function () {
 	})
 
 	socket.on("orderbook", (data) => {
-		// console.log(data);
+		console.log(data);
 		
 		var new_element = $('<div class="log"></div>').append($('<div class="type"></div>').html(data.pair)).append($('<span class="time"></span>').html(new Date().toLocaleTimeString("en-us", localeOptions))).append($('<div class="content"></div>').html(JSON.stringify(data.book, null, ' ')));
 		$("#book-log-container").prepend(new_element);
@@ -37,4 +37,12 @@ $(document).ready(function () {
 	$(".btn-clear").on('click', function() {
 		$(this).parents(".component").find(".logs").empty();
 	})
+
+	setInterval(function() {
+		$("#trade-log-container").empty();
+		$("#ticker-log-container").empty();
+	}, 1000*30);
+	setInterval(function() {
+		$("#book-log-container").empty();
+	}, 1000*60*5);
 });

@@ -7,6 +7,86 @@ var hbs = require("hbs");
 var io = require('socket.io');
 var hbsutils = require("hbs-utils")(hbs);
 var compress = require("compression");
+var pg = require('pg')
+var format = require('pg-format')
+
+var db_ticker_config = {
+  host: 'bitfinex.ccnihvzteajt.us-east-2.rds.amazonaws.com',
+  port: '5432',
+  user: 'bitfinex', // name of the user account
+  password: 'bitfinex',
+  database: 'ticker', // name of the database
+  max: 10, // max number of clients in the pool
+  idleTimeoutMillis: 70000 // how long a client is allowed to remain idle before being closed
+}
+var db_trades_config = {
+  host: 'bitfinex.ccnihvzteajt.us-east-2.rds.amazonaws.com',
+  port: '5432',
+  user: 'bitfinex', // name of the user account
+  password: 'bitfinex',
+  database: 'trades', // name of the database
+  max: 10, // max number of clients in the pool
+  idleTimeoutMillis: 70000 // how long a client is allowed to remain idle before being closed
+}
+var db_book_config = {
+  host: 'bitfinex.ccnihvzteajt.us-east-2.rds.amazonaws.com',
+  port: '5432',
+  user: 'bitfinex', // name of the user account
+  password: 'bitfinex',
+  database: 'book', // name of the database
+  max: 10, // max number of clients in the pool
+  idleTimeoutMillis: 70000 // how long a client is allowed to remain idle before being closed
+}
+
+
+
+var ticker_pool = new pg.Pool(db_ticker_config)
+var tickerClient = null
+var global_ticker_data = [];
+
+setInterval( function() {
+  if(global_ticker_data.length == 0) return;
+  ticker_pool.connect(function (err, client, done) {
+    if (err) console.log(err)
+    tickerClient = client
+    var insertQuery = format('INSERT INTO public.ticker("PAIR", "DateCreated", "BID", "BID_SIZE", "ASK", "ASK_SIZE", "DAILY_CHANGE", "DAILY_CHANGE_PERC", "LAST_PRICE", "VOLUME", "HIGH", "LOW") VALUES %L', global_ticker_data)
+    global_ticker_data.length = 0;
+    tickerClient.query(insertQuery, function (err, result) {
+      if (err) {
+        console.log(err)
+      }
+    })
+    if(g_socket) {
+      g_socket.emit('clear_ticker');
+    }
+  })
+}, 1000 * 60 * 1);
+
+
+
+var trades_pool = new pg.Pool(db_trades_config)
+var tradesClient = null
+var global_trades_data = [];
+
+setInterval( function() {
+  if(global_trades_data.length == 0) return;
+  trades_pool.connect(function (err, client, done) {
+    if (err) console.log(err)
+    tradesClient = client
+    var insertQuery = format('INSERT INTO public.trades("PAIR", "DateCreated", "Event", "EventID", "MTS", "AMOUNT", "PRICE") VALUES %L', global_trades_data)
+    global_trades_data.length = 0;
+    tradesClient.query(insertQuery, function (err, result) {
+      if (err) {
+        console.log(err)
+      }
+    })
+    if(g_socket) {
+      g_socket.emit('clear_trades');
+    }
+  })
+}, 1000 * 60 * 1);
+
+
 
 var app = express();
 
@@ -165,6 +245,10 @@ connect = () => {
     if(g_socket) {
       g_socket.emit("trade", { pair, trade });
     }
+
+    if(trade[0]=='tu') {
+      global_trades_data.push([ pair, new Date(), trade[0], trade[1].ID, trade[1].MTS, trade[1].AMOUNT, trade[1].PRICE ]);
+    }
   })
 
   bws.on('ticker', (pair, ticker) => {
@@ -174,6 +258,8 @@ connect = () => {
     if(g_socket) {
     	g_socket.emit("ticker", { pair, ticker });
     }
+
+    global_ticker_data.push([ pair, new Date(), ticker.BID, ticker.BID_SIZE, ticker.ASK, ticker.ASK_SIZE, ticker.DAILY_CHANGE, ticker.DAILY_CHANGE_PERC, ticker.LAST_PRICE, ticker.VOLUME, ticker.HIGH, ticker.LOW ]);
   })
 
   bws.on('error', console.error)
@@ -203,7 +289,7 @@ checkSide = (pair, side) => {
 }
 
 emitBookOrder = (pair) => {
-  if(BOOKS[pair] != undefined && BOOKS[pair].bids && BOOKS[pair].asks) g_socket.emit("orderbook", { pair, book: { bids: BOOKS[pair].bids, asks: BOOKS[pair].asks } } )
+  if(BOOKS[pair] != undefined && BOOKS[pair].bids && BOOKS[pair].asks && g_socket) g_socket.emit("orderbook", { pair, book: { bids: BOOKS[pair].bids, asks: BOOKS[pair].asks } } )
 }
 
 setInterval(function() {
@@ -212,12 +298,33 @@ setInterval(function() {
   })
 }, 1000*60)
 
+
+
+
+
+var book_pool = new pg.Pool(db_book_config)
+var bookClient = null 
 saveBookOrder = (pair) => {
-  console.log(BOOKS[pair]);
+  // console.log(BOOKS[pair]);
+  if(!BOOKS[pair]) return;
+
+  book_pool.connect(function (err, client, done) {
+    if (err) console.log(err)
+    bookClient = client
+    var insertQuery = format('INSERT INTO public.book("PAIR", "DateCreated", "BookInstance") VALUES %L', [ [ pair, new Date(), BOOKS[pair] ] ])
+    bookClient.query(insertQuery, function (err, result) {
+      if (err) {
+        console.log(err)
+      }
+    })
+  })
 }
 
 setInterval(function() {
   pairs.forEach((pair) => {
     saveBookOrder(pair);
   })
-}, 1000*60*10)
+  if(g_socket) {
+    g_socket.emit('clear_book');
+  }
+}, 1000 * 60 * 10)

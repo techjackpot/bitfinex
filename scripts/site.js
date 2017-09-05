@@ -28,7 +28,7 @@ $(document).ready(function () {
 	})
 
 	socket.on("orderbook", (data) => {
-		console.log(data);
+		// console.log(data);
 		
 		var new_element = $('<div class="log"></div>').append($('<div class="type"></div>').html(data.pair)).append($('<span class="time"></span>').html(new Date().toLocaleTimeString("en-us", localeOptions))).append($('<div class="content"></div>').html(JSON.stringify(data.book, null, ' ')));
 		$("#book-log-container").prepend(new_element);
@@ -38,11 +38,28 @@ $(document).ready(function () {
 		$(this).parents(".component").find(".logs").empty();
 	})
 
-	setInterval(function() {
-		$("#trade-log-container").empty();
+
+	socket.on('clear_ticker', () => {
 		$("#ticker-log-container").empty();
-	}, 1000*30);
-	setInterval(function() {
+		$(".status-list").append($('<h4 class="ticker-status">Ticker saved.</h4>'));
+		setTimeout(function() {
+			$(".ticker-status").remove();
+		}, 3000);
+	})
+
+	socket.on('clear_trades', () => {
+		$("#trade-log-container").empty();
+		$(".status-list").append($('<h4 class="trade-status">Trades saved.</h4>'));
+		setTimeout(function() {
+			$(".trade-status").remove();
+		}, 3000);
+	})
+
+	socket.on('clear_book', () => {
 		$("#book-log-container").empty();
-	}, 1000*60*5);
+		$(".status-list").append($('<h4 class="book-status">BookInstance saved.</h4>'));
+		setTimeout(function() {
+			$(".book-status").remove();
+		}, 3000);
+	})
 });

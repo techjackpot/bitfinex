@@ -16,8 +16,10 @@ var db_ticker_config = {
   user: 'bitfinex', // name of the user account
   password: 'bitfinex',
   database: 'ticker', // name of the database
-  max: 10, // max number of clients in the pool
-  idleTimeoutMillis: 70000 // how long a client is allowed to remain idle before being closed
+  max: 20, // set pool max size to 20 
+  min: 4, // set min pool size to 4 
+  idleTimeoutMillis: 5000, // close idle clients after 1 second 
+  connectionTimeoutMillis: 0, // return an error after 1 second if connection could not be established
 }
 var db_trades_config = {
   host: 'bitfinex.ccnihvzteajt.us-east-2.rds.amazonaws.com',
@@ -25,8 +27,10 @@ var db_trades_config = {
   user: 'bitfinex', // name of the user account
   password: 'bitfinex',
   database: 'trades', // name of the database
-  max: 10, // max number of clients in the pool
-  idleTimeoutMillis: 70000 // how long a client is allowed to remain idle before being closed
+  max: 20, // set pool max size to 20 
+  min: 4, // set min pool size to 4 
+  idleTimeoutMillis: 5000, // close idle clients after 1 second 
+  connectionTimeoutMillis: 0, // return an error after 1 second if connection could not be established
 }
 var db_book_config = {
   host: 'bitfinex.ccnihvzteajt.us-east-2.rds.amazonaws.com',
@@ -34,8 +38,10 @@ var db_book_config = {
   user: 'bitfinex', // name of the user account
   password: 'bitfinex',
   database: 'book', // name of the database
-  max: 10, // max number of clients in the pool
-  idleTimeoutMillis: 70000 // how long a client is allowed to remain idle before being closed
+  max: 20, // set pool max size to 20 
+  min: 4, // set min pool size to 4 
+  idleTimeoutMillis: 5000, // close idle clients after 1 second 
+  connectionTimeoutMillis: 0, // return an error after 1 second if connection could not be established
 }
 
 
@@ -50,15 +56,16 @@ setInterval( function() {
     if (err) console.log(err)
     tickerClient = client
     var insertQuery = format('INSERT INTO public.ticker("PAIR", "DateCreated", "BID", "BID_SIZE", "ASK", "ASK_SIZE", "DAILY_CHANGE", "DAILY_CHANGE_PERC", "LAST_PRICE", "VOLUME", "HIGH", "LOW") VALUES %L', global_ticker_data)
-    global_ticker_data.length = 0;
     tickerClient.query(insertQuery, function (err, result) {
+      global_ticker_data.length = 0;
+      if(g_socket) {
+        g_socket.emit('clear_ticker');
+      }
+      done()
       if (err) {
         console.log(err)
       }
     })
-    if(g_socket) {
-      g_socket.emit('clear_ticker');
-    }
   })
 }, 1000 * 60 * 1);
 
@@ -74,15 +81,16 @@ setInterval( function() {
     if (err) console.log(err)
     tradesClient = client
     var insertQuery = format('INSERT INTO public.trades("PAIR", "DateCreated", "Event", "EventID", "MTS", "AMOUNT", "PRICE") VALUES %L', global_trades_data)
-    global_trades_data.length = 0;
     tradesClient.query(insertQuery, function (err, result) {
+      global_trades_data.length = 0;
+      if(g_socket) {
+        g_socket.emit('clear_trades');
+      }
+      done()
       if (err) {
         console.log(err)
       }
     })
-    if(g_socket) {
-      g_socket.emit('clear_trades');
-    }
   })
 }, 1000 * 60 * 1);
 
@@ -300,8 +308,6 @@ setInterval(function() {
 
 
 
-
-
 var book_pool = new pg.Pool(db_book_config)
 var bookClient = null 
 saveBookOrder = (pair) => {
@@ -313,6 +319,7 @@ saveBookOrder = (pair) => {
     bookClient = client
     var insertQuery = format('INSERT INTO public.book("PAIR", "DateCreated", "BookInstance") VALUES %L', [ [ pair, new Date(), BOOKS[pair] ] ])
     bookClient.query(insertQuery, function (err, result) {
+      done()
       if (err) {
         console.log(err)
       }
